@@ -1,0 +1,9 @@
+# Netlify serves the repo root as-is. No build step: the data is refreshed by
+# GitHub Actions (see .github/workflows/update.yml), which commits players.json
+# and triggers a redeploy automatically.
+[build]
+  publish = "."
+  command = ""
+
+[build.environment]
+  NODE_VERSION = "20"

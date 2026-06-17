@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deuce — tennis match model</title>
+<style>
+  :root{
+    --bg:#10141b; --panel:#171d27; --panel-2:#1f2733; --line:#2a3340;
+    --ink:#eef2f6; --muted:#8b97a6; --faint:#5d6976;
+    --yellow:#ccff00; --yellow-dim:#9fc400;
+    --hard:#3f9bff; --clay:#e07b39; --grass:#5fbf6a;
+    --a:#ccff00; --b:#3f9bff;
+    --radius:14px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #1a2230 0%, var(--bg) 55%) fixed,
+      var(--bg);
+    color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+    padding:28px 18px 80px;
+  }
+  .wrap{max-width:780px;margin:0 auto}
+
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:6px;flex-wrap:wrap}
+  .brand{display:flex;align-items:baseline;gap:12px}
+  .brand h1{
+    font-size:30px;letter-spacing:-.02em;margin:0;font-weight:800;
+  }
+  .brand h1 .dot{color:var(--yellow)}
+  .tag{color:var(--muted);font-size:13px}
+  .updated{color:var(--faint);font-size:12px;font-family:var(--mono)}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 22px}
+  .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{
+    appearance:none;border:0;background:transparent;color:var(--muted);
+    font:inherit;font-size:13px;font-weight:600;padding:7px 15px;border-radius:999px;cursor:pointer;
+    transition:.15s;
+  }
+  .seg button[aria-pressed="true"]{background:var(--yellow);color:#0c0f14}
+  .seg.surface button[aria-pressed="true"][data-s="hard"]{background:var(--hard);color:#04101f}
+  .seg.surface button[aria-pressed="true"][data-s="clay"]{background:var(--clay);color:#1c0d04}
+  .seg.surface button[aria-pressed="true"][data-s="grass"]{background:var(--grass);color:#06140a}
+  .seg button:focus-visible{outline:2px solid var(--yellow);outline-offset:2px}
+
+  .court{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:20px;display:grid;grid-template-columns:1fr 44px 1fr;gap:14px;align-items:start;
+  }
+  .vs{align-self:center;text-align:center;color:var(--faint);font-family:var(--mono);font-size:12px;letter-spacing:.1em}
+  .slot label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:7px}
+  .slot.a label{color:var(--a)}
+  .slot.b label{color:var(--b)}
+
+  /* typeahead */
+  .picker{position:relative}
+  .picker input{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+    font:inherit;font-size:15px;padding:11px 12px;border-radius:10px;outline:none;transition:.15s;
+  }
+  .picker input:focus{border-color:var(--yellow);box-shadow:0 0 0 3px rgba(204,255,0,.12)}
+  .slot.b .picker input:focus{border-color:var(--b);box-shadow:0 0 0 3px rgba(63,155,255,.14)}
+  .menu{
+    position:absolute;z-index:30;left:0;right:0;top:calc(100% + 6px);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+    max-height:260px;overflow:auto;box-shadow:0 18px 40px rgba(0,0,0,.45);display:none;
+  }
+  .menu.open{display:block}
+  .opt{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;font-size:14px}
+  .opt small{color:var(--faint);font-family:var(--mono);font-size:11px}
+  .opt[aria-selected="true"]{background:rgba(204,255,0,.12)}
+  .opt mark{background:transparent;color:var(--yellow);font-weight:700}
+  .opt.custom{color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
+  .empty{padding:12px;color:var(--faint);font-size:13px;text-align:center}
+
+  .go{
+    margin:22px 0;width:100%;appearance:none;border:0;cursor:pointer;
+    background:var(--yellow);color:#0c0f14;font:inherit;font-weight:800;font-size:16px;
+    padding:15px;border-radius:12px;letter-spacing:-.01em;transition:.15s;
+  }
+  .go:hover{background:#dbff3a}
+  .go:active{transform:translateY(1px)}
+  .go:disabled{background:var(--panel-2);color:var(--faint);cursor:not-allowed}
+
+  .result{display:none}
+  .result.show{display:block}
+
+  .bars{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:14px}
+  .barrow{display:grid;grid-template-columns:1fr;gap:6px;margin-bottom:16px}
+  .barrow:last-child{margin-bottom:0}
+  .barhead{display:flex;justify-content:space-between;align-items:baseline;font-size:14px}
+  .barhead .nm{font-weight:700}
+  .barhead .pct{font-family:var(--mono);font-size:22px;font-weight:700}
+  .track{height:12px;background:var(--panel-2);border-radius:999px;overflow:hidden}
+  .fill{height:100%;border-radius:999px;width:0;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+  .a .fill{background:linear-gradient(90deg,var(--yellow-dim),var(--yellow))}
+  .a .pct{color:var(--yellow)}
+  .b .fill{background:linear-gradient(90deg,#2b6fbf,var(--b))}
+  .b .pct{color:var(--b)}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}.court{grid-template-columns:1fr;gap:16px}.vs{display:none}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h3{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+  .kv{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;border-bottom:1px dashed var(--line)}
+  .kv:last-child{border-bottom:0}
+  .kv b{font-family:var(--mono);font-weight:600}
+
+  .kelly{margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .kelly h3{margin:0 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+  .kelly .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+  .kelly .f{flex:1;min-width:130px}
+  .kelly label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .kelly select,.kelly input{width:100%;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);font:inherit;padding:9px 10px;border-radius:9px;outline:none}
+  .kelly input:focus,.kelly select:focus{border-color:var(--yellow)}
+  .verdict{margin-top:12px;font-size:14px;padding:11px 12px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line)}
+  .verdict b{font-family:var(--mono)}
+  .pos{color:var(--grass)} .neg{color:#ff6b6b}
+
+  footer{margin-top:26px;color:var(--faint);font-size:12px;line-height:1.6}
+  footer a{color:var(--muted)}
+  .note{font-size:12px;color:var(--faint);margin-top:8px}
+  .disclaimer{margin-top:14px;font-size:11px;color:var(--faint);border-top:1px solid var(--line);padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>Deuce<span class="dot">.</span></h1>
+      <span class="tag">surface-aware match model</span>
+    </div>
+    <span class="updated" id="updated">loading…</span>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg tour" role="group" aria-label="Tour">
+      <button data-tour="ATP" aria-pressed="true">ATP</button>
+      <button data-tour="WTA" aria-pressed="false">WTA</button>
+    </div>
+    <div class="seg surface" role="group" aria-label="Surface">
+      <button data-s="hard" aria-pressed="true">Hard</button>
+      <button data-s="clay" aria-pressed="false">Clay</button>
+      <button data-s="grass" aria-pressed="false">Grass</button>
+    </div>
+    <div class="seg fmt" role="group" aria-label="Format">
+      <button data-bo="3" aria-pressed="true">Best of 3</button>
+      <button data-bo="5" aria-pressed="false">Best of 5</button>
+    </div>
+  </div>
+
+  <div class="court">
+    <div class="slot a">
+      <label>Player A</label>
+      <div class="picker" id="pickA"></div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="slot b">
+      <label>Player B</label>
+      <div class="picker" id="pickB"></div>
+    </div>
+  </div>
+
+  <button class="go" id="go" disabled>Pick two players</button>
+
+  <section class="result" id="result">
+    <div class="bars">
+      <div class="barrow a">
+        <div class="barhead"><span class="nm" id="nmA"></span><span class="pct" id="pctA"></span></div>
+        <div class="track"><div class="fill" id="fillA"></div></div>
+      </div>
+      <div class="barrow b">
+        <div class="barhead"><span class="nm" id="nmB"></span><span class="pct" id="pctB"></span></div>
+        <div class="track"><div class="fill" id="fillB"></div></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Fair odds (no vig)</h3>
+        <div class="kv"><span id="foaName">A</span><b id="foA"></b></div>
+        <div class="kv"><span id="fobName">B</span><b id="foB"></b></div>
+        <div class="kv"><span>Model edge split</span><b id="edgeSplit"></b></div>
+      </div>
+      <div class="card">
+        <h3>Under the hood</h3>
+        <div class="kv"><span>Elo (surface)</span><b id="eloLine"></b></div>
+        <div class="kv"><span>Hold % A / B</span><b id="holdLine"></b></div>
+        <div class="kv"><span>Elo vs serve model</span><b id="splitLine"></b></div>
+      </div>
+    </div>
+
+    <div class="kelly">
+      <h3>Stake sizing (quarter Kelly)</h3>
+      <div class="row">
+        <div class="f">
+          <label>Bet on</label>
+          <select id="kSide"></select>
+        </div>
+        <div class="f">
+          <label>Bookmaker odds (decimal)</label>
+          <input id="kOdds" type="number" step="0.01" min="1.01" placeholder="e.g. 1.85">
+        </div>
+        <div class="f">
+          <label>Bankroll</label>
+          <input id="kBank" type="number" step="1" min="0" placeholder="e.g. 100">
+        </div>
+      </div>
+      <div class="verdict" id="kVerdict">Enter the price your book is offering to see whether the model thinks it's value.</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="disclaimer">
+      Model only. Ratings are estimates from historical results, not a guarantee of anything.
+      For entertainment and learning. If you bet, only risk what you can afford to lose, and check
+      that sports betting is legal where you are.
+    </div>
+    <div class="note">Data refreshes daily from public match results. Source field above shows the last update.</div>
+  </footer>
+</div>
+
+<script>
+/* ============================ MODEL ============================ */
+// game win prob for a server who wins each service point with prob p
+function holdProb(p){
+  p=Math.max(0.01,Math.min(0.99,p)); const q=1-p;
+  return Math.pow(p,4) + 4*Math.pow(p,4)*q + 10*Math.pow(p,4)*q*q
+       + 20*Math.pow(p,3)*Math.pow(q,3)*(p*p/(p*p+q*q));
+}
+// 7-point tiebreak, A serves first; pa=A point win on A serve, pb=A point win on B serve
+function tiebreakProb(pa,pb){
+  const memo=new Map();
+  const serverIsA=n=> n===0 ? true : (Math.floor((n-1)/2)%2===1);
+  function rec(a,b){
+    if(a>=7&&a-b>=2) return 1;
+    if(b>=7&&b-a>=2) return 0;
+    if(a>=6&&b>=6&&a===b){ // win-by-2 from a tie: closed form (avoids infinite recursion)
+      const d=pa*pb; return d/(d+(1-pa)*(1-pb));
+    }
+    const key=a*100+b; if(memo.has(key)) return memo.get(key);
+    const pA = serverIsA(a+b)?pa:pb;
+    const r = pA*rec(a+1,b) + (1-pA)*rec(a,b+1);
+    memo.set(key,r); return r;
+  }
+  return rec(0,0);
+}
+// set win prob, A serves game 1; holdA/holdB are hold probs, pa/pb point probs for the tiebreak
+function setProb(holdA,holdB,pa,pb){
+  const memo=new Map();
+  function rec(ga,gb){
+    if(ga>=6&&ga-gb>=2) return 1;
+    if(gb>=6&&gb-ga>=2) return 0;
+    if(ga===6&&gb===6) return tiebreakProb(pa,pb);
+    const key=ga*100+gb; if(memo.has(key)) return memo.get(key);
+    const aServes=((ga+gb)%2===0);
+    const gWin = aServes ? holdA : (1-holdB);
+    const r = gWin*rec(ga+1,gb) + (1-gWin)*rec(ga,gb+1);
+    memo.set(key,r); return r;
+  }
+  return rec(0,0);
+}
+const matchFromSet=(s,bo)=> bo===3 ? s*s*(3-2*s) : Math.pow(s,3)*(6*s*s-15*s+10);
+function kellyFraction(p,dec,frac=0.25){ const b=dec-1; if(b<=0) return 0; return Math.max(0,frac*((b*p-(1-p))/b)); }
+
+/* ============================ DATA ============================ */
+const SEED = {"updated":"2026-06-16 (seed)","tours":{"ATP":{"tour_avg_spw":0.64},"WTA":{"tour_avg_spw":0.56}},"tour_avg_spw":0.64,"players":{
+  "sinner":{"name":"Jannik Sinner","tour":"ATP","elo":{"hard":2150,"clay":2080,"grass":2040,"overall":2120},"serve":{"hard":0.68,"clay":0.66,"grass":0.70,"overall":0.68},"return":{"hard":0.42,"clay":0.44,"grass":0.40,"overall":0.42}},
+  "alcaraz":{"name":"Carlos Alcaraz","tour":"ATP","elo":{"hard":2090,"clay":2130,"grass":2100,"overall":2110},"serve":{"hard":0.66,"clay":0.65,"grass":0.69,"overall":0.66},"return":{"hard":0.43,"clay":0.45,"grass":0.41,"overall":0.43}},
+  "djokovic":{"name":"Novak Djokovic","tour":"ATP","elo":{"hard":2090,"clay":2080,"grass":2090,"overall":2090},"serve":{"hard":0.66,"clay":0.65,"grass":0.68,"overall":0.66},"return":{"hard":0.44,"clay":0.45,"grass":0.42,"overall":0.44}},
+  "zverev":{"name":"Alexander Zverev","tour":"ATP","elo":{"hard":2010,"clay":2030,"grass":1980,"overall":2010},"serve":{"hard":0.68,"clay":0.66,"grass":0.70,"overall":0.68},"return":{"hard":0.40,"clay":0.41,"grass":0.38,"overall":0.40}},
+  "medvedev":{"name":"Daniil Medvedev","tour":"ATP","elo":{"hard":2000,"clay":1900,"grass":1950,"overall":1980},"serve":{"hard":0.65,"clay":0.63,"grass":0.67,"overall":0.65},"return":{"hard":0.42,"clay":0.42,"grass":0.39,"overall":0.42}},
+  "fritz":{"name":"Taylor Fritz","tour":"ATP","elo":{"hard":1970,"clay":1850,"grass":1990,"overall":1950},"serve":{"hard":0.69,"clay":0.66,"grass":0.71,"overall":0.69},"return":{"hard":0.37,"clay":0.37,"grass":0.35,"overall":0.37}},
+  "rune":{"name":"Holger Rune","tour":"ATP","elo":{"hard":1930,"clay":1950,"grass":1900,"overall":1930},"serve":{"hard":0.65,"clay":0.64,"grass":0.67,"overall":0.65},"return":{"hard":0.40,"clay":0.41,"grass":0.38,"overall":0.40}},
+  "tsitsipas":{"name":"Stefanos Tsitsipas","tour":"ATP","elo":{"hard":1920,"clay":1980,"grass":1900,"overall":1930},"serve":{"hard":0.67,"clay":0.66,"grass":0.68,"overall":0.67},"return":{"hard":0.39,"clay":0.41,"grass":0.37,"overall":0.39}},
+  "rublev":{"name":"Andrey Rublev","tour":"ATP","elo":{"hard":1930,"clay":1940,"grass":1900,"overall":1930},"serve":{"hard":0.66,"clay":0.65,"grass":0.67,"overall":0.66},"return":{"hard":0.39,"clay":0.40,"grass":0.37,"overall":0.39}},
+  "deminaur":{"name":"Alex de Minaur","tour":"ATP","elo":{"hard":1910,"clay":1860,"grass":1920,"overall":1900},"serve":{"hard":0.62,"clay":0.60,"grass":0.64,"overall":0.62},"return":{"hard":0.41,"clay":0.41,"grass":0.39,"overall":0.41}},
+  "hurkacz":{"name":"Hubert Hurkacz","tour":"ATP","elo":{"hard":1910,"clay":1840,"grass":1970,"overall":1910},"serve":{"hard":0.70,"clay":0.67,"grass":0.72,"overall":0.70},"return":{"hard":0.35,"clay":0.35,"grass":0.33,"overall":0.35}},
+  "draper":{"name":"Jack Draper","tour":"ATP","elo":{"hard":1920,"clay":1870,"grass":1930,"overall":1910},"serve":{"hard":0.67,"clay":0.65,"grass":0.69,"overall":0.67},"return":{"hard":0.39,"clay":0.39,"grass":0.37,"overall":0.39}},
+  "musetti":{"name":"Lorenzo Musetti","tour":"ATP","elo":{"hard":1880,"clay":1950,"grass":1860,"overall":1900},"serve":{"hard":0.64,"clay":0.64,"grass":0.65,"overall":0.64},"return":{"hard":0.39,"clay":0.41,"grass":0.37,"overall":0.39}},
+  "shelton":{"name":"Ben Shelton","tour":"ATP","elo":{"hard":1890,"clay":1830,"grass":1930,"overall":1890},"serve":{"hard":0.69,"clay":0.66,"grass":0.71,"overall":0.69},"return":{"hard":0.36,"clay":0.36,"grass":0.34,"overall":0.36}},
+  "dimitrov":{"name":"Grigor Dimitrov","tour":"ATP","elo":{"hard":1880,"clay":1850,"grass":1900,"overall":1880},"serve":{"hard":0.67,"clay":0.65,"grass":0.69,"overall":0.67},"return":{"hard":0.38,"clay":0.38,"grass":0.36,"overall":0.38}},
+  "tiafoe":{"name":"Frances Tiafoe","tour":"ATP","elo":{"hard":1870,"clay":1830,"grass":1890,"overall":1870},"serve":{"hard":0.66,"clay":0.64,"grass":0.68,"overall":0.66},"return":{"hard":0.38,"clay":0.38,"grass":0.36,"overall":0.38}},
+  "tour":{"name":"ATP tour average","tour":"ATP","elo":{"hard":1750,"clay":1750,"grass":1750,"overall":1750},"serve":{"hard":0.635,"clay":0.62,"grass":0.66,"overall":0.635},"return":{"hard":0.37,"clay":0.38,"grass":0.35,"overall":0.37}},
+  "swiatek":{"name":"Iga Swiatek","tour":"WTA","elo":{"hard":1990,"clay":2090,"grass":1930,"overall":2010},"serve":{"hard":0.57,"clay":0.58,"grass":0.56,"overall":0.57},"return":{"hard":0.47,"clay":0.49,"grass":0.45,"overall":0.47}},
+  "sabalenka":{"name":"Aryna Sabalenka","tour":"WTA","elo":{"hard":2030,"clay":1960,"grass":1980,"overall":2010},"serve":{"hard":0.61,"clay":0.59,"grass":0.62,"overall":0.61},"return":{"hard":0.44,"clay":0.43,"grass":0.42,"overall":0.44}},
+  "gauff":{"name":"Coco Gauff","tour":"WTA","elo":{"hard":1980,"clay":1990,"grass":1950,"overall":1980},"serve":{"hard":0.58,"clay":0.57,"grass":0.58,"overall":0.58},"return":{"hard":0.46,"clay":0.47,"grass":0.44,"overall":0.46}},
+  "rybakina":{"name":"Elena Rybakina","tour":"WTA","elo":{"hard":1990,"clay":1940,"grass":2000,"overall":1980},"serve":{"hard":0.62,"clay":0.60,"grass":0.63,"overall":0.62},"return":{"hard":0.43,"clay":0.42,"grass":0.41,"overall":0.43}},
+  "pegula":{"name":"Jessica Pegula","tour":"WTA","elo":{"hard":1930,"clay":1880,"grass":1930,"overall":1920},"serve":{"hard":0.58,"clay":0.56,"grass":0.59,"overall":0.58},"return":{"hard":0.44,"clay":0.43,"grass":0.42,"overall":0.44}},
+  "paolini":{"name":"Jasmine Paolini","tour":"WTA","elo":{"hard":1900,"clay":1960,"grass":1890,"overall":1910},"serve":{"hard":0.55,"clay":0.56,"grass":0.55,"overall":0.55},"return":{"hard":0.44,"clay":0.45,"grass":0.42,"overall":0.44}},
+  "zheng":{"name":"Zheng Qinwen","tour":"WTA","elo":{"hard":1910,"clay":1880,"grass":1900,"overall":1910},"serve":{"hard":0.59,"clay":0.57,"grass":0.60,"overall":0.59},"return":{"hard":0.43,"clay":0.43,"grass":0.41,"overall":0.43}},
+  "andreeva":{"name":"Mirra Andreeva","tour":"WTA","elo":{"hard":1910,"clay":1940,"grass":1880,"overall":1910},"serve":{"hard":0.56,"clay":0.57,"grass":0.56,"overall":0.56},"return":{"hard":0.46,"clay":0.47,"grass":0.44,"overall":0.46}},
+  "wtatour":{"name":"WTA tour average","tour":"WTA","elo":{"hard":1650,"clay":1650,"grass":1650,"overall":1650},"serve":{"hard":0.555,"clay":0.56,"grass":0.555,"overall":0.555},"return":{"hard":0.445,"clay":0.45,"grass":0.43,"overall":0.445}}
+}};
+
+let DATA = SEED;
+
+/* ============================ STATE ============================ */
+const state={tour:"ATP",surface:"hard",bo:3,a:null,b:null,last:null};
+const ELO_W=0.5; // blend weight: Elo vs serve model
+
+const leagueServe = ()=> (DATA.tours && DATA.tours[state.tour] && DATA.tours[state.tour].tour_avg_spw) || DATA.tour_avg_spw || 0.62;
+const leagueReturn = ()=> 1-leagueServe();
+const activeTourPlayers = ()=> Object.entries(DATA.players)
+  .filter(([k,v])=>(v.tour||"ATP")===state.tour)
+  .map(([k,v])=>({key:k,name:v.name,elo:v.elo.overall}));
+
+function customPlayer(name){
+  const avgKey = state.tour==="WTA" ? "wtatour" : "tour";
+  const base = DATA.players[avgKey] || {elo:{hard:1750,clay:1750,grass:1750,overall:1750},serve:{hard:.62,clay:.62,grass:.62,overall:.62},return:{hard:.38,clay:.38,grass:.38,overall:.38}};
+  return {name:name||"Custom player",tour:state.tour,elo:{...base.elo},serve:{...base.serve},return:{...base.return},_custom:true};
+}
+
+/* ============================ PREDICT ============================ */
+function predict(A,B){
+  const s=state.surface, bo=state.bo, lr=leagueReturn();
+  const eA=A.elo[s], eB=B.elo[s];
+  const pElo = 1/(1+Math.pow(10,(eB-eA)/400));
+  // serve points won, adjusted by opponent's return strength vs the league
+  const clamp=x=>Math.max(0.40,Math.min(0.85,x));
+  const aServe = clamp(A.serve[s] - (B.return[s]-lr));
+  const bServe = clamp(B.serve[s] - (A.return[s]-lr));
+  const holdA = holdProb(aServe), holdB = holdProb(bServe);
+  const setP = setProb(holdA,holdB,aServe,1-bServe);
+  const pServe = matchFromSet(setP,bo);
+  const pA = ELO_W*pElo + (1-ELO_W)*pServe;
+  return {pA,pElo,pServe,holdA,holdB,eA,eB};
+}
+
+/* ============================ TYPEAHEAD ============================ */
+function makePicker(host,which){
+  const input=document.createElement("input");
+  input.type="text"; input.autocomplete="off"; input.spellcheck=false;
+  input.placeholder="Search "+state.tour+" players…";
+  const menu=document.createElement("div"); menu.className="menu";
+  host.appendChild(input); host.appendChild(menu);
+  let active=-1, opts=[];
+
+  const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  function candidates(q){
+    q=q.trim().toLowerCase();
+    let list=activeTourPlayers();
+    if(q){
+      list=list.filter(o=>o.name.toLowerCase().includes(q));
+      list.sort((x,y)=>{
+        const xs=x.name.toLowerCase().startsWith(q), ys=y.name.toLowerCase().startsWith(q);
+        if(xs!==ys) return xs?-1:1;
+        return y.elo-x.elo;
+      });
+    } else {
+      list.sort((x,y)=>y.elo-x.elo);
+    }
+    list=list.slice(0,60);
+    list.push({key:"custom",name:q?("Use \""+input.value.trim()+"\" as custom player"):"Custom player…",custom:true});
+    return list;
+  }
+  function render(q){
+    opts=candidates(q); active=-1;
+    if(!opts.length){menu.innerHTML='<div class="empty">No players match</div>';return;}
+    const ql=q.trim().toLowerCase();
+    menu.innerHTML=opts.map((o,i)=>{
+      if(o.custom) return '<div class="opt custom" data-i="'+i+'">'+o.name.replace(/</g,"&lt;")+'</div>';
+      let nm=o.name;
+      if(ql){const re=new RegExp("("+esc(ql)+")","ig");nm=nm.replace(re,"<mark>$1</mark>");}
+      return '<div class="opt" role="option" data-i="'+i+'"><span>'+nm+'</span><small>'+o.elo+'</small></div>';
+    }).join("");
+  }
+  function open(){render(input.value);menu.classList.add("open")}
+  function close(){menu.classList.remove("open")}
+  function highlight(){[...menu.children].forEach((c,i)=>c.setAttribute("aria-selected", i===active?"true":"false"));
+    const el=menu.children[active]; if(el) el.scrollIntoView({block:"nearest"});}
+  function choose(i){
+    const o=opts[i]; if(!o) return;
+    if(o.custom){
+      const nm=input.value.trim()||"Custom player";
+      state[which]=customPlayer(nm); input.value=state[which].name;
+    } else {
+      state[which]={...DATA.players[o.key]}; input.value=o.name;
+    }
+    close(); syncGo();
+  }
+
+  input.addEventListener("focus",open);
+  input.addEventListener("input",()=>{state[which]=null;render(input.value);menu.classList.add("open");syncGo();});
+  input.addEventListener("keydown",e=>{
+    if(!menu.classList.contains("open")&&["ArrowDown","ArrowUp"].includes(e.key)){open();return;}
+    if(e.key==="ArrowDown"){e.preventDefault();active=Math.min(opts.length-1,active+1);highlight();}
+    else if(e.key==="ArrowUp"){e.preventDefault();active=Math.max(0,active-1);highlight();}
+    else if(e.key==="Enter"){e.preventDefault();choose(active<0?0:active);}
+    else if(e.key==="Escape"){close();}
+  });
+  menu.addEventListener("mousedown",e=>{const t=e.target.closest("[data-i]");if(t){e.preventDefault();choose(+t.dataset.i);}});
+  input.addEventListener("blur",()=>{setTimeout(()=>{ // revert to last valid pick if text doesn't resolve
+    if(!state[which]){ input.value=""; } close();
+  },120);});
+
+  return {input,reset(){state[which]=null;input.value="";input.placeholder="Search "+state.tour+" players…";close();}};
+}
+
+/* ============================ WIRING ============================ */
+const $=id=>document.getElementById(id);
+const pickA=makePicker($("pickA"),"a");
+const pickB=makePicker($("pickB"),"b");
+
+function syncGo(){
+  const ok=state.a&&state.b;
+  const same=ok&&!state.a._custom&&!state.b._custom&&state.a.name===state.b.name;
+  const go=$("go");
+  go.disabled=!ok||same;
+  go.textContent = !ok ? "Pick two players" : same ? "Pick two different players" : "Run the model";
+}
+
+document.querySelectorAll(".seg.tour button").forEach(b=>b.onclick=()=>{
+  state.tour=b.dataset.tour;
+  document.querySelectorAll(".seg.tour button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  pickA.reset();pickB.reset();$("result").classList.remove("show");syncGo();
+});
+document.querySelectorAll(".seg.surface button").forEach(b=>b.onclick=()=>{
+  state.surface=b.dataset.s;
+  document.querySelectorAll(".seg.surface button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  if(state.last) run();
+});
+document.querySelectorAll(".seg.fmt button").forEach(b=>b.onclick=()=>{
+  state.bo=+b.dataset.bo;
+  document.querySelectorAll(".seg.fmt button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  if(state.last) run();
+});
+
+function fmtPct(p){return (p*100).toFixed(1)+"%"}
+function run(){
+  if(!state.a||!state.b) return;
+  const A=state.a,B=state.b;
+  const r=predict(A,B); state.last={A,B,r};
+  $("result").classList.add("show");
+  $("nmA").textContent=A.name; $("nmB").textContent=B.name;
+  $("pctA").textContent=fmtPct(r.pA); $("pctB").textContent=fmtPct(1-r.pA);
+  $("fillA").style.width=(r.pA*100)+"%"; $("fillB").style.width=((1-r.pA)*100)+"%";
+  $("foaName").textContent=A.name; $("fobName").textContent=B.name;
+  $("foA").textContent=(1/r.pA).toFixed(2); $("foB").textContent=(1/(1-r.pA)).toFixed(2);
+  $("edgeSplit").textContent=(r.pElo*100).toFixed(0)+"% / "+(r.pServe*100).toFixed(0)+"%";
+  $("eloLine").textContent=Math.round(r.eA)+" vs "+Math.round(r.eB);
+  $("holdLine").textContent=(r.holdA*100).toFixed(0)+"% / "+(r.holdB*100).toFixed(0)+"%";
+  $("splitLine").textContent="50 / 50 blend";
+  const sel=$("kSide");
+  sel.innerHTML='<option value="a">'+A.name+'</option><option value="b">'+B.name+'</option>';
+  kellyUpdate();
+}
+$("go").onclick=run;
+
+/* Kelly */
+function kellyUpdate(){
+  if(!state.last){return;}
+  const {A,B,r}=state.last;
+  const side=$("kSide").value;
+  const p = side==="a"?r.pA:(1-r.pA);
+  const nm = side==="a"?A.name:B.name;
+  const odds=parseFloat($("kOdds").value);
+  const bank=parseFloat($("kBank").value);
+  const v=$("kVerdict");
+  if(!odds||odds<=1){v.innerHTML="Enter the price your book is offering to see whether the model thinks it's value.";return;}
+  const fair=1/p;
+  const f=kellyFraction(p,odds,0.25);
+  const edge=(p*odds-1)*100;
+  if(f<=0){
+    v.innerHTML="Model fair price for <b>"+nm+"</b> is <b>"+fair.toFixed(2)+"</b>. At <b>"+odds.toFixed(2)+"</b> there's <span class='neg'>no edge</span> ("+edge.toFixed(1)+"%). Pass.";
+  } else {
+    let s="Model fair price for <b>"+nm+"</b> is <b>"+fair.toFixed(2)+"</b>, book has <b>"+odds.toFixed(2)+"</b> → <span class='pos'>+"+edge.toFixed(1)+"% edge</span>. Quarter-Kelly stake: <b>"+(f*100).toFixed(1)+"%</b> of bankroll";
+    if(bank>0) s+=" = <b>"+(f*bank).toFixed(2)+"</b>";
+    s+=".";
+    v.innerHTML=s;
+  }
+}
+$("kSide").onchange=kellyUpdate;
+$("kOdds").oninput=kellyUpdate;
+$("kBank").oninput=kellyUpdate;
+
+/* load live data, fall back to seed */
+function applyData(d){
+  DATA=d;
+  $("updated").textContent="updated "+(d.updated||"unknown");
+}
+applyData(SEED);
+fetch("players.json",{cache:"no-store"})
+  .then(r=>{if(!r.ok)throw new Error(r.status);return r.json();})
+  .then(d=>{ if(d&&d.players&&Object.keys(d.players).length){ applyData(d); pickA.reset(); pickB.reset(); } })
+  .catch(()=>{ $("updated").textContent="seed data (live file not found)"; });
+syncGo();
+</script>
+</body>
+</html>
